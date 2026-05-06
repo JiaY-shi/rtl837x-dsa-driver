@@ -793,6 +793,9 @@ static void rtl837x_gsw_remove(struct mdio_device *mdiodev)
 {
 	struct rtk_gsw *gsw = dev_get_drvdata(&mdiodev->dev);;
 	cancel_delayed_work_sync(&gsw->status_check_work);
+	if (gsw->sfp_bus)
+		sfp_bus_del_upstream(gsw->sfp_bus);
+
 	unregister_switch(&gsw->sw_dev);
 	rtl837x_debug_proc_deinit();
 }
