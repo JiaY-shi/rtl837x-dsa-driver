@@ -784,7 +784,7 @@ static int rtl837x_gsw_probe(struct mdio_device *mdiodev)
 
 	rtl837x_sfp_probe(gsw);
 
-	rtl837x_debug_proc_init();
+	rtl837x_debug_proc_init(gsw);
 	rtl837x_status_check_work_init(gsw);
 	return 0;
 }
@@ -797,7 +797,7 @@ static void rtl837x_gsw_remove(struct mdio_device *mdiodev)
 		sfp_bus_del_upstream(gsw->sfp_bus);
 
 	unregister_switch(&gsw->sw_dev);
-	rtl837x_debug_proc_deinit();
+	rtl837x_debug_proc_deinit(gsw);
 }
 
 static void rtl837x_gsw_shutdown(struct mdio_device *mdiodev)

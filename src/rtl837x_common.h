@@ -10,6 +10,7 @@
 #include <linux/of_mdio.h>
 #include <linux/regmap.h>
 #include <linux/workqueue.h>
+#include <linux/debugfs.h>
 
 #include "./rtk-api/rtk_error.h"
 #include "./rtk-api/rtk_types.h"
@@ -77,6 +78,8 @@ struct rtk_gsw {
 	const uint8_t *port_map;
 	unsigned int num_ports;
 
+	struct dentry *debugfs_parent;
+
 	bool force_set_serdes0_mode;
 	bool force_set_serdes1_mode;
 	rtk_sds_mode_t sds0mode;
@@ -113,8 +116,8 @@ struct rtk_gsw {
 
 extern int rtl8372n_hw_init(struct rtk_gsw *gsw, rtl837x_pnswap_cfg_t swap_cfg);
 
-extern int rtl837x_debug_proc_init(void);
-extern int rtl837x_debug_proc_deinit(void);
+extern int rtl837x_debug_proc_init(struct rtk_gsw *gsw);
+extern int rtl837x_debug_proc_deinit(struct rtk_gsw *gsw);
 
 extern int rtl837x_swconfig_init(struct rtk_gsw *gsw);
 extern int rtl837x_gpiochip_init(struct rtk_gsw *gsw);

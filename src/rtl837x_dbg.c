@@ -15,121 +15,204 @@
 #include "./rtk-api/rtk_switch.h"
 #include "./rtk-api/dal/rtl8373/rtl8373_asicdrv.h"
 
-static struct proc_dir_entry *proc_reg_dir;
-static struct proc_dir_entry *proc_sds_reg;
-static struct proc_dir_entry *proc_sds_page5;
+#define TO_FOPS(name) _##name##_rw_fops
 
-#define N_RTK_GSW "rtk_gsw"
-#define N_SDS_REG "sds_reg"
-#define N_SDS_PAGE5 "sds_page5"
+#define REGRWFUNC(name) \
+	static char _buf_rd_##name[64];  \
+	static ssize_t _##name##_rw_read(struct file *filep, char __user *ubuf,  \
+				  size_t count, loff_t *offp)   \
+	{   \
+		return simple_read_from_buffer(ubuf, count, offp, _buf_rd_##name, strlen(_buf_rd_##name));   \
+	}   \
+	extern ssize_t _##name##_rw_write(struct file *filep, const char __user *ubuf,   \
+				   size_t count, loff_t *offp);   \
+	static const struct file_operations _##name##_rw_fops = {   \
+		.owner = THIS_MODULE,   \
+		.open = simple_open,   \
+		.write = _##name##_rw_write,   \
+		.read = _##name##_rw_read   \
+	};
 
-static int sds_reg_read(struct seq_file *seq, void *v)
+REGRWFUNC(reg)
+REGRWFUNC(phyreg_mmd)
+REGRWFUNC(sdsreg)
+
+ssize_t _sdsreg_rw_write(struct file *filep, const char __user *ubuf,
+				   size_t count, loff_t *offp)
 {
+	char *buf;
+	uint32_t sds_id, page, reg, val;
+
+	buf = memdup_user_nul(ubuf, count);
+	if (IS_ERR(buf))
+		return PTR_ERR(buf);
+	
+	if(buf[0] == 'w') {
+		if(sscanf(buf, "w %d %x %x %x", &sds_id, &page, &reg, &val) == -1)
+			return -EFAULT;
+		else{
+			if (sds_id > 1)
+				return -EFAULT;
+			rtk_rtl8373_sds_reg_write(sds_id, page, reg, val);
+		}
+	} else if(buf[0] == 'r') {
+		if(sscanf(buf, "r %d %x %x", &sds_id, &page, &reg) == -1)
+			return -EFAULT;
+		else {
+			rtk_rtl8373_sds_reg_read(sds_id, page, reg, &val);
+			snprintf(_buf_rd_sdsreg, 64, "sds_id: %d, page: 0x%08x, reg: 0x%08x, val: 0x%08x\n", sds_id, page, reg, val);
+		}
+	} else {
+		snprintf(_buf_rd_sdsreg, 64, "echo \"w/r <sds_id> <page> <reg> [<val>]\" > sdsreg\n");
+	}
+	return count;
+}
+
+ssize_t _phyreg_mmd_rw_write(struct file *filep, const char __user *ubuf,
+				   size_t count, loff_t *offp)
+{
+	char *buf;
+	uint32_t port, devad, reg, val;
+
+	buf = memdup_user_nul(ubuf, count);
+	if (IS_ERR(buf))
+		return PTR_ERR(buf);
+	
+	if(buf[0] == 'w') {
+		if(sscanf(buf, "w %d %x %x %x", &port, &devad, &reg, &val) == -1)
+			return -EFAULT;
+		else{
+			if (port > 9)
+				return -EFAULT;
+			rtk_port_phyReg_set(1<<port, devad, reg, val);
+		}
+	} else if(buf[0] == 'r') {
+		if(sscanf(buf, "r %d %x %x", &port, &devad, &reg) == -1)
+			return -EFAULT;
+		else {
+			rtk_port_phyReg_get(port, devad, reg, &val);
+			snprintf(_buf_rd_phyreg_mmd, 64, "port: %d, devad: 0x%08x, reg: 0x%08x, val: 0x%08x\n", port, devad, reg, val);
+		}
+	} else {
+		snprintf(_buf_rd_phyreg_mmd, 64, "echo \"w/r <real_port_index> <devad> <reg> [<val>]\" > phyreg_mmd\n");
+	}
+	return count;
+}
+
+ssize_t _reg_rw_write(struct file *filep, const char __user *ubuf,
+				   size_t count, loff_t *offp)
+{
+	char *buf;
+	uint32_t reg, val;
+	if (*offp)
+		return 0;
+
+	buf = memdup_user_nul(ubuf, count);
+	if (IS_ERR(buf))
+		return PTR_ERR(buf);
+
+	if(buf[0] == 'w') {
+		if(sscanf(buf, "w %x %x", &reg, &val) == -1)
+			return -EFAULT;
+		else
+			rtk_rtl8373_setAsicReg(reg, val);
+	} else if(buf[0] == 'r') {
+		if(sscanf(buf, "r %x", &reg) == -1)
+			return -EFAULT;
+		else {
+			rtk_rtl8373_getAsicReg(reg, &val);
+			snprintf(_buf_rd_reg, 64, "reg: 0x%08x, val: 0x%08x\n", reg, val);
+		}
+	} else {
+		snprintf(_buf_rd_reg, 64, "echo \"w/r <reg> [<val>]\" > reg\n");
+	}
+	return count;
+}
+
+static ssize_t _sds_page_dump_read(struct file *filep, char __user *ubuf,
+				size_t count, loff_t *offp)
+{
+	char buf[2048];
+	int len = 0;
 	unsigned int v3;
 
 	rtk_rtl8373_getAsicReg(RTL8373_SDS_MODE_SEL_ADDR, &v3);
-	seq_printf(seq, "reg 0x7b20: %#x\n", v3);
-	rtk_rtl8373_sds_reg_read(0, 0x21u, 0x10u, &v3);
-	seq_printf(seq, "sds page 0x21  reg 0x10; data = %#x\n", v3);
-	rtk_rtl8373_sds_reg_read(0, 0x21u, 0x13u, &v3);
-	seq_printf(seq, "sds page 0x21  reg 0x13; data = %#x\n", v3);
-	rtk_rtl8373_sds_reg_read(0, 0x21u, 0x18u, &v3);
-	seq_printf(seq, "sds page 0x21  reg 0x18; data = %#x\n", v3);
-	rtk_rtl8373_sds_reg_read(0, 0x21u, 0x1Bu, &v3);
-	seq_printf(seq, "sds page 0x21  reg 0x1b; data = %#x\n", v3);
-	rtk_rtl8373_sds_reg_read(0, 0x21u, 0x1Du, &v3);
-	seq_printf(seq, "sds page 0x21  reg 0x1d; data = %#x\n", v3);
-	rtk_rtl8373_sds_reg_read(0, 0x36u, 0x1Cu, &v3);
-	seq_printf(seq, "sds page 0x36  reg 0x1c; data = %#x\n", v3);
-	rtk_rtl8373_sds_reg_read(0, 0x36u, 0x14u, &v3);
-	seq_printf(seq, "sds page 0x36  reg 0x14; data = %#x\n", v3);
-	rtk_rtl8373_sds_reg_read(0, 0x36u, 0x10u, &v3);
-	seq_printf(seq, "sds page 0x36  reg 0x10; data = %#x\n", v3);
-	rtk_rtl8373_sds_reg_read(0, 0x2Eu, 4u, &v3);
-	seq_printf(seq, "sds page 0x2e  reg 0x04; data = %#x\n", v3);
-	rtk_rtl8373_sds_reg_read(0, 0x2Eu, 6u, &v3);
-	seq_printf(seq, "sds page 0x2e  reg 0x06; data = %#x\n", v3);
-	rtk_rtl8373_sds_reg_read(0, 0x2Eu, 7u, &v3);
-	seq_printf(seq, "sds page 0x2e  reg 0x07; data = %#x\n", v3);
-	rtk_rtl8373_sds_reg_read(0, 0x2Eu, 9u, &v3);
-	seq_printf(seq, "sds page 0x2e  reg 0x09; data = %#x\n", v3);
-	rtk_rtl8373_sds_reg_read(0, 0x2Eu, 0xBu, &v3);
-	seq_printf(seq, "sds page 0x2e  reg 0x0b; data = %#x\n", v3);
-	rtk_rtl8373_sds_reg_read(0, 0x2Eu, 0xCu, &v3);
-	seq_printf(seq, "sds page 0x2e  reg 0x0c; data = %#x\n", v3);
-	rtk_rtl8373_sds_reg_read(0, 0x2Eu, 0xDu, &v3);
-	seq_printf(seq, "sds page 0x2e  reg 0x0d; data = %#x\n", v3);
-	rtk_rtl8373_sds_reg_read(0, 0x2Eu, 0x15u, &v3);
-	seq_printf(seq, "sds page 0x2e  reg 0x15; data = %#x\n", v3);
-	rtk_rtl8373_sds_reg_read(0, 0x2Eu, 0x16u, &v3);
-	seq_printf(seq, "sds page 0x2e  reg 0x16; data = %#x\n", v3);
-	rtk_rtl8373_sds_reg_read(0, 0x2Eu, 0x1Du, &v3);
-	seq_printf(seq, "sds page 0x2e  reg 0x1d; data = %#x\n", v3);
-	return 0LL;
+	len += snprintf(buf + len, sizeof(buf)-len, "reg 0x7b20: %#x\n", v3);
+	rtk_rtl8373_sds_reg_read(0, 0x21, 0x10, &v3);
+	len += snprintf(buf + len, sizeof(buf)-len, "sds page 0x21  reg 0x10; data = %#x\n", v3);
+	rtk_rtl8373_sds_reg_read(0, 0x21, 0x13, &v3);
+	len += snprintf(buf + len, sizeof(buf)-len, "sds page 0x21  reg 0x13; data = %#x\n", v3);
+	rtk_rtl8373_sds_reg_read(0, 0x21, 0x18, &v3);
+	len += snprintf(buf + len, sizeof(buf)-len, "sds page 0x21  reg 0x18; data = %#x\n", v3);
+	rtk_rtl8373_sds_reg_read(0, 0x21, 0x1B, &v3);
+	len += snprintf(buf + len, sizeof(buf)-len, "sds page 0x21  reg 0x1b; data = %#x\n", v3);
+	rtk_rtl8373_sds_reg_read(0, 0x21, 0x1D, &v3);
+	len += snprintf(buf + len, sizeof(buf)-len, "sds page 0x21  reg 0x1d; data = %#x\n", v3);
+	rtk_rtl8373_sds_reg_read(0, 0x36, 0x1C, &v3);
+	len += snprintf(buf + len, sizeof(buf)-len, "sds page 0x36  reg 0x1c; data = %#x\n", v3);
+	rtk_rtl8373_sds_reg_read(0, 0x36, 0x14, &v3);
+	len += snprintf(buf + len, sizeof(buf)-len, "sds page 0x36  reg 0x14; data = %#x\n", v3);
+	rtk_rtl8373_sds_reg_read(0, 0x36, 0x10, &v3);
+	len += snprintf(buf + len, sizeof(buf)-len, "sds page 0x36  reg 0x10; data = %#x\n", v3);
+	rtk_rtl8373_sds_reg_read(0, 0x2E, 4, &v3);
+	len += snprintf(buf + len, sizeof(buf)-len, "sds page 0x2e  reg 0x04; data = %#x\n", v3);
+	rtk_rtl8373_sds_reg_read(0, 0x2E, 6, &v3);
+	len += snprintf(buf + len, sizeof(buf)-len, "sds page 0x2e  reg 0x06; data = %#x\n", v3);
+	rtk_rtl8373_sds_reg_read(0, 0x2E, 7, &v3);
+	len += snprintf(buf + len, sizeof(buf)-len, "sds page 0x2e  reg 0x07; data = %#x\n", v3);
+	rtk_rtl8373_sds_reg_read(0, 0x2E, 9, &v3);
+	len += snprintf(buf + len, sizeof(buf)-len, "sds page 0x2e  reg 0x09; data = %#x\n", v3);
+	rtk_rtl8373_sds_reg_read(0, 0x2E, 0xB, &v3);
+	len += snprintf(buf + len, sizeof(buf)-len, "sds page 0x2e  reg 0x0b; data = %#x\n", v3);
+	rtk_rtl8373_sds_reg_read(0, 0x2E, 0xC, &v3);
+	len += snprintf(buf + len, sizeof(buf)-len, "sds page 0x2e  reg 0x0c; data = %#x\n", v3);
+	rtk_rtl8373_sds_reg_read(0, 0x2E, 0xD, &v3);
+	len += snprintf(buf + len, sizeof(buf)-len, "sds page 0x2e  reg 0x0d; data = %#x\n", v3);
+	rtk_rtl8373_sds_reg_read(0, 0x2E, 0x15, &v3);
+	len += snprintf(buf + len, sizeof(buf)-len, "sds page 0x2e  reg 0x15; data = %#x\n", v3);
+	rtk_rtl8373_sds_reg_read(0, 0x2E, 0x16, &v3);
+	len += snprintf(buf + len, sizeof(buf)-len, "sds page 0x2e  reg 0x16; data = %#x\n", v3);
+	rtk_rtl8373_sds_reg_read(0, 0x2E, 0x1D, &v3);
+	len += snprintf(buf + len, sizeof(buf)-len, "sds page 0x2e  reg 0x1d; data = %#x\n", v3);
+
+	rtk_rtl8373_sds_regbits_read(0, 5, 0, 1, &v3);
+	len += snprintf(buf + len, sizeof(buf)-len, "sds page 5  reg 0; bit0 = %#x\n", v3);
+	rtk_rtl8373_sds_regbits_read(0, 5, 1, 255, &v3);
+	len += snprintf(buf + len, sizeof(buf)-len, "sds page 5  reg 1; bit7:0 = %#x\n", v3);
+
+	return simple_read_from_buffer(ubuf, count, offp, buf, strlen(buf));
 }
 
-static int sds_page5_read(struct seq_file *seq, void *v)
-{
-	unsigned int v3;
-
-	rtk_rtl8373_sds_regbits_read(0LL, 5LL, 0LL, 1LL, &v3);
-	seq_printf(seq, "sds page 5  reg 0; bit0 = %#x\n", v3);
-	rtk_rtl8373_sds_regbits_read(0LL, 5LL, 1LL, 255LL, &v3);
-	seq_printf(seq, "sds page 5  reg 1; bit7:0 = %#x\n", v3);
-	return 0LL;
-}
-
-
-
-static int sds_reg_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, sds_reg_read, 0);
-}
-
-static int sds_page5_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, sds_page5_read, 0);
-}
-
-static const struct proc_ops proc_sds_reg_fops = {
-	.proc_open = sds_reg_open,
-	.proc_read = seq_read,
-	.proc_lseek = seq_lseek,
-	.proc_release = single_release
+static const struct file_operations _sds_page_dump_fops = {
+	.owner = THIS_MODULE,
+	.open = simple_open,
+	.read = _sds_page_dump_read
 };
 
-static const struct proc_ops proc_sds_page5_fops = {
-	.proc_open = sds_page5_open,
-	.proc_read = seq_read,
-	.proc_lseek = seq_lseek,
-	.proc_release = single_release
-};
-
-int rtl837x_debug_proc_init(void)
+int rtl837x_debug_proc_init(struct rtk_gsw *gsw)
 {
+	gsw->debugfs_parent = debugfs_create_dir(gsw->sw_dev.devname, NULL);
+	debugfs_create_file("reg", 0600,
+			gsw->debugfs_parent, NULL,
+			&TO_FOPS(reg));
 
-	if (!proc_reg_dir)
-		proc_reg_dir = proc_mkdir(N_RTK_GSW, NULL);
+	debugfs_create_file("phy_mmd", 0600,
+		gsw->debugfs_parent, NULL,
+		&TO_FOPS(phyreg_mmd));
 
-	proc_sds_reg =
-	proc_create(N_SDS_REG, 0, proc_reg_dir, &proc_sds_reg_fops);
-	if (!proc_sds_reg)
-		pr_err("!! FAIL to create %s PROC !!\n", N_SDS_REG);
+	debugfs_create_file("sdsreg", 0600,
+		gsw->debugfs_parent, NULL,
+		&TO_FOPS(sdsreg));
 
-	proc_sds_page5 =
-	proc_create(N_SDS_PAGE5, 0, proc_reg_dir, &proc_sds_page5_fops);
-	if (!proc_sds_page5)
-		pr_err("!! FAIL to create %s PROC !!\n", N_SDS_PAGE5);
+	debugfs_create_file("sds_page_dump", 0400,
+		gsw->debugfs_parent, NULL,
+		&_sds_page_dump_fops);
 
 	return 0;
 }
 
-int rtl837x_debug_proc_deinit(void)
+int rtl837x_debug_proc_deinit(struct rtk_gsw *gsw)
 {
-
-	proc_remove(proc_sds_page5);
-	proc_remove(proc_sds_reg);
-	proc_remove(proc_reg_dir);
-
+	debugfs_remove_recursive(gsw->debugfs_parent);
 	return 0;
 }
