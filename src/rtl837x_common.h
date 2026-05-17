@@ -27,9 +27,15 @@
 #include "./rtk-api/igmp.h"
 #include "./rtk-api/gpio.h"
 #include "./rtk-api/dal/rtl8373/rtl8373_asicdrv.h"
-#include "./rtk-api/dal/rtl8373/rtl8373_smi.h"
 #include "./rtk-api/dal/dal_mapper.h"
 #include "./rtk-api/dal/rtl8373/dal_rtl8373_mapper.h"
+
+#define MDC_MDIO_CTRL_REG           21
+#define MDC_MDIO_ADDR_REG           22
+#define MDC_MDIO_DATA_LOW           23
+#define MDC_MDIO_DATA_HIGH          24
+#define MDC_MDIO_READ_CMD           0x1B
+#define MDC_MDIO_WRITE_CMD          0x19
 
 #define PORT_MAPPED(portx) (gsw->port_map[portx])
 #define USE_SERDESMODE(sds_index, _mode)                    \

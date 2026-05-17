@@ -760,7 +760,7 @@ static int rtl837x_gsw_probe(struct mdio_device *mdiodev)
 						 gsw->mdio_addr, gsw->cpu_port, gsw->sds0mode, *(uint8_t*)&(gsw->swap_cfg));
 
 	dev_set_drvdata(dev, gsw);
-	gsw_regmap = gsw->map;
+	rtl_gbl_priv = gsw;
 
 	ret = rtl8372n_hw_init(gsw, gsw->swap_cfg);
 	if (ret)

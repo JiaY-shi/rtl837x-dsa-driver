@@ -56,7 +56,6 @@ rtl837x_gsw-objs += rtk-api/dal/rtl8373/dal_rtl8373_wol.o
 rtl837x_gsw-objs += rtk-api/dal/rtl8373/rtl8373_asicdrv.o
 rtl837x_gsw-objs += rtk-api/dal/rtl8373/rtl8373_regField_list.o
 rtl837x_gsw-objs += rtk-api/dal/rtl8373/rtl8373_reg_list.o
-rtl837x_gsw-objs += rtk-api/dal/rtl8373/rtl8373_smi.o
 rtl837x_gsw-objs += rtk-api/dal/rtl8373/rtl8373_tableField_list.o
 rtl837x_gsw-objs += rtk-api/dal/rtl8373/rtl8373_table_list.o
 rtl837x_gsw-objs += rtk-api/acl.o

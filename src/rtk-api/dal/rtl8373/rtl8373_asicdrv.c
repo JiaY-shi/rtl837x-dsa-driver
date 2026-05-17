@@ -17,28 +17,14 @@
  *
  */
 
+#include <linux/bitops.h>
+#include <linux/regmap.h>
 #include <rtl8373_asicdrv.h>
 
-#if defined(RTK_X86_ASICDRV)
-#include <I2Clib.h>
-#else
-#include <rtl8373_smi.h>
-#endif
+#include "../../../rtl837x_common.h"
 
-/*for driver verify testing only*/
-#ifdef CONFIG_RTL8373_ASICDRV_TEST
-#define CLE_VIRTUAL_REG_SIZE        0x10000
-rtk_uint16 CleVirtualReg[CLE_VIRTUAL_REG_SIZE];
-#endif
-
-#if defined(CONFIG_RTL865X_CLE) || defined (RTK_X86_CLE)
-rtk_uint32 cleDebuggingDisplay;
-#endif
-
-#ifdef EMBEDDED_SUPPORT
-extern void setReg(rtk_uint16, rtk_uint16);
-extern rtk_uint16 getReg(rtk_uint16);
-#endif
+// we need refactoring here to avoid global variable
+struct rtk_gsw *rtl_gbl_priv;
 
 /* Function Name:
  *      rtl8373_setAsicRegBit
@@ -59,98 +45,15 @@ extern rtk_uint16 getReg(rtk_uint16);
  */
 ret_t rtl8373_setAsicRegBit(rtk_uint32 reg, rtk_uint32 offset, rtk_uint32 value)
 {
-
-#if defined(RTK_X86_ASICDRV)
-    rtk_uint32 regData;
-    ret_t retVal;
-
-    if(offset >= RTL8373_REGBITLENGTH)
-        return RT_ERR_INPUT;
-
-    retVal = Access_Read(reg, 4, &regData);
-    if(TRUE != retVal)
-        return RT_ERR_SMI;
-
-    if(0x8367B == cleDebuggingDisplay)
-        PRINT("R[0x%4.4x]=0x%4.4x\n", reg, regData);
+    int ret;
 
     if(value)
-        regData = regData | (1 << offset);
+        ret = regmap_set_bits(rtl_gbl_priv->map, reg, BIT(offset));
     else
-        regData = regData & (~(1 << offset));
+        ret = regmap_clear_bits(rtl_gbl_priv->map, reg, BIT(offset));
 
-    retVal = Access_Write(reg,4, regData);
-    if(TRUE != retVal)
+    if (ret)
         return RT_ERR_SMI;
-
-    if(0x8367B == cleDebuggingDisplay)
-        PRINT("W[0x%4.4x]=0x%4.4x\n", reg, regData);
-
-
-#elif defined(CONFIG_RTL8373_ASICDRV_TEST)
-
-    if(offset >= RTL8373_REGBITLENGTH)
-        return RT_ERR_INPUT;
-
-    else if(reg >= CLE_VIRTUAL_REG_SIZE)
-        return RT_ERR_OUT_OF_RANGE;
-
-    if(value)
-    {
-        CleVirtualReg[reg] =  CleVirtualReg[reg] | (1 << offset);
-    }
-    else
-    {
-        CleVirtualReg[reg] =  CleVirtualReg[reg] & (~(1 << offset));
-    }
-
-    if(0x8367B == cleDebuggingDisplay)
-        PRINT("W[0x%8.8x]=0x%8.8x\n", reg, CleVirtualReg[reg]);
-
-#elif defined(EMBEDDED_SUPPORT)
-    rtk_uint16 tmp;
-
-    if(reg > RTL8373_REGDATAMAX || value > 1)
-        return RT_ERR_INPUT;
-
-    tmp = getReg(reg);
-    tmp &= (1 << offset);
-    tmp |= (value << offset);
-    setReg(reg, tmp);
-
-#else
-    rtk_uint32 regData;
-    ret_t retVal;
-
-
-    if(offset >= RTL8373_REGBITLENGTH)
-        return RT_ERR_INPUT;
-
-    retVal = rtl8373_smi_read(reg, &regData);
-    if(retVal != RT_ERR_OK)
-        return RT_ERR_SMI;
-
-  #ifdef CONFIG_RTL865X_CLE
-    if(0x8367B == cleDebuggingDisplay)
-        PRINT("R[0x%8.8x]=0x%8.8x\n", reg, regData);
-  #endif
-    if(value)
-        regData = regData | (1 << offset);
-    else
-        regData = regData & (~(1 << offset));
-
-    retVal = rtl8373_smi_write(reg, regData);
-    if(retVal != RT_ERR_OK)
-        return RT_ERR_SMI;
-
-  #ifdef CONFIG_RTL865X_CLE
-    if(0x8367B == cleDebuggingDisplay)
-        PRINT("W[0x%8.8x]=0x%8.8x\n", reg, regData);
-  #endif
-
-#endif
-
-    //PRINT("W[0x%8.8x]=0x%8.8x\n", reg, regData);
     return RT_ERR_OK;
 }
 /* Function Name:
@@ -172,65 +75,16 @@ ret_t rtl8373_setAsicRegBit(rtk_uint32 reg, rtk_uint32 offset, rtk_uint32 value)
  */
 ret_t rtl8373_getAsicRegBit(rtk_uint32 reg, rtk_uint32 offset, rtk_uint32 *pValue)
 {
+    int ret;
+    u32 val;
 
-#if defined(RTK_X86_ASICDRV)
+    ret = regmap_read(rtl_gbl_priv->map, reg, &val);
 
-    rtk_uint32 regData;
-    ret_t retVal;
-
-    if(offset >= RTL8373_REGBITLENGTH)
-        return RT_ERR_INPUT;
-
-    retVal = Access_Read(reg, 4, &regData);
-    if(TRUE != retVal)
+    if (ret)
         return RT_ERR_SMI;
 
-    //*pValue = (regData & (0x1 << offset)) >> offset;
-    *pValue = ((regData  >> offset ) & 0x1);
-    if(0x8367B == cleDebuggingDisplay)
-        PRINT("R[0x%8.8x]=0x%8.8x\n", reg, regData);
+    *pValue = !!(val & (0x1 << offset));
 
-#elif defined(CONFIG_RTL8373_ASICDRV_TEST)
-
-    if(bit >= RTL8373_REGBITLENGTH)
-        return RT_ERR_INPUT;
-
-    if(reg >= CLE_VIRTUAL_REG_SIZE)
-        return RT_ERR_OUT_OF_RANGE;
-
-    *pValue = (CleVirtualReg[reg] & (0x1 << offset)) >> offset;
-
-    if(0x8367B == cleDebuggingDisplay)
-        PRINT("R[0x%8.8x]=0x%8.8x\n", reg, CleVirtualReg[reg]);
-
-#elif defined(EMBEDDED_SUPPORT)
-    rtk_uint16 tmp;
-
-    if(reg > RTL8373_REGDATAMAX )
-        return RT_ERR_INPUT;
-
-    tmp = getReg(reg);
-    tmp = tmp >> offset;
-    tmp &= 1;
-    *pValue = tmp;
-#else
-    rtk_uint32 regData;
-    ret_t retVal;
-
-    retVal = rtl8373_smi_read(reg, &regData);
-    if(retVal != RT_ERR_OK)
-        return RT_ERR_SMI;
-
-  #ifdef CONFIG_RTL865X_CLE
-    if(0x8367B == cleDebuggingDisplay)
-        PRINT("R[0x%8.8x]=0x%8.8x\n", reg, regData);
-  #endif
-
-    *pValue = (regData & (0x1 << offset)) >> offset;
-
-#endif
-
-    //PRINT("R[0x%8.8x]=0x%8.8x\n", reg, regData);
     return RT_ERR_OK;
 }
 /* Function Name:
@@ -252,148 +106,11 @@ ret_t rtl8373_getAsicRegBit(rtk_uint32 reg, rtk_uint32 offset, rtk_uint32 *pValu
  */
 ret_t rtl8373_setAsicRegBits(rtk_uint32 reg, rtk_uint32 bitsMask, rtk_uint32 value)
 {
+    int ret;
 
-#if defined(RTK_X86_ASICDRV)
-
-    rtk_uint32 regData;
-    ret_t retVal;
-    rtk_uint32 bitsShift;
-    rtk_uint32 valueShifted;
-
-    if( !bitsMask )
-           return RT_ERR_INPUT;
-
-    bitsShift = 0;
-    while(!(bitsMask & (1 << bitsShift)))
-    {
-        bitsShift++;
-        if(bitsShift >= RTL8373_REGBITLENGTH)
-            return RT_ERR_INPUT;
-    }
-
-    valueShifted = value << bitsShift;
-    if(valueShifted > RTL8373_REGDATAMAX)
-        return RT_ERR_INPUT;
-
-    retVal = Access_Read(reg, 4, &regData);
-    if(TRUE != retVal)
+    ret = regmap_update_bits(rtl_gbl_priv->map, reg, bitsMask, (value << __ffs(bitsMask)) & bitsMask);
+    if (ret)
         return RT_ERR_SMI;
-
-    if(0x8367B == cleDebuggingDisplay)
-        PRINT("R[0x%4.4x]=0x%4.4x\n", reg, regData);
-
-    regData = regData & (~bitsMask);
-    regData = regData | (valueShifted & bitsMask);
-
-    retVal = Access_Write(reg,4, regData);
-    if(TRUE != retVal)
-        return RT_ERR_SMI;
-
-    if(0x8367B == cleDebuggingDisplay)
-        PRINT("W[0x%4.4x]=0x%4.4x\n", reg, regData);
-
-#elif defined(CONFIG_RTL8373_ASICDRV_TEST)
-    rtk_uint32 regData;
-    rtk_uint32 bitsShift;
-    rtk_uint32 valueShifted;
-
-    if(!bitsMask )
-        return RT_ERR_INPUT;
-
-    bitsShift = 0;
-    while(!(bitsMask & (1 << bitsShift)))
-    {
-        bitsShift++;
-        if(bitsShift >= RTL8373_REGBITLENGTH)
-            return RT_ERR_INPUT;
-    }
-    valueShifted = value << bitsShift;
-
-    if(valueShifted > RTL8373_REGDATAMAX)
-        return RT_ERR_INPUT;
-
-    if(reg >= CLE_VIRTUAL_REG_SIZE)
-        return RT_ERR_OUT_OF_RANGE;
-
-    regData = CleVirtualReg[reg] & (~bitsMask);
-    regData = regData | (valueShifted & bitsMask);
-
-    CleVirtualReg[reg] = regData;
-
-    if(0x8367B == cleDebuggingDisplay)
-        PRINT("W[0x%4.4x]=0x%4.4x\n", reg, regData);
-
-#elif defined(EMBEDDED_SUPPORT)
-    rtk_uint32 regData;
-    rtk_uint32 bitsShift;
-    rtk_uint32 valueShifted;
-
-    if(reg > RTL8373_REGDATAMAX )
-        return RT_ERR_INPUT;
-
-    if(bitsMask >= (1 << RTL8373_REGBITLENGTH) )
-        return RT_ERR_INPUT;
-
-    bitsShift = 0;
-    while(!(bitsMask & (1 << bitsShift)))
-    {
-        bitsShift++;
-        if(bitsShift >= RTL8373_REGBITLENGTH)
-            return RT_ERR_INPUT;
-    }
-
-    valueShifted = value << bitsShift;
-    if(valueShifted > RTL8373_REGDATAMAX)
-        return RT_ERR_INPUT;
-
-    regData = getReg(reg);
-    regData = regData & (~bitsMask);
-    regData = regData | (valueShifted & bitsMask);
-
-    setReg(reg, regData);
-
-#else
-    rtk_uint32 regData;
-    ret_t retVal;
-    rtk_uint32 bitsShift;
-    rtk_uint32 valueShifted;
-
-    if( !bitsMask )
-        return RT_ERR_INPUT;
-
-    bitsShift = 0;
-    while(!(bitsMask & (1 << bitsShift)))
-    {
-        bitsShift++;
-        if(bitsShift >= RTL8373_REGBITLENGTH)
-            return RT_ERR_INPUT;
-    }
-    valueShifted = value << bitsShift;
-
-    if(valueShifted > RTL8373_REGDATAMAX)
-        return RT_ERR_INPUT;
-
-    retVal = rtl8373_smi_read(reg, &regData);
-    if(retVal != RT_ERR_OK)
-        return RT_ERR_SMI;
-  #ifdef CONFIG_RTL865X_CLE
-    if(0x8367B == cleDebuggingDisplay)
-        PRINT("R[0x%4.4x]=0x%4.4x\n", reg, regData);
-  #endif
-
-    regData = regData & (~bitsMask);
-    regData = regData | (valueShifted & bitsMask);
-
-    retVal = rtl8373_smi_write(reg, regData);
-    if(retVal != RT_ERR_OK)
-        return RT_ERR_SMI;
-  #ifdef CONFIG_RTL865X_CLE
-    if(0x8367B == cleDebuggingDisplay)
-        PRINT("W[0x%4.4x]=0x%4.4x\n", reg, regData);
-  #endif
-#endif
-
-    //PRINT("W[0x%4.4x]=0x%4.4x\n", reg, regData);
     return RT_ERR_OK;
 }
 /* Function Name:
@@ -415,104 +132,15 @@ ret_t rtl8373_setAsicRegBits(rtk_uint32 reg, rtk_uint32 bitsMask, rtk_uint32 val
  */
 ret_t rtl8373_getAsicRegBits(rtk_uint32 reg, rtk_uint32 bitsMask, rtk_uint32 *pValue)
 {
+    int ret;
+    u32 val;
 
-#if defined(RTK_X86_ASICDRV)
+    ret = regmap_read(rtl_gbl_priv->map, reg, &val);
 
-    rtk_uint32 regData;
-    ret_t retVal;
-    rtk_uint32 bitsShift;
-
-    if( !bitsMask )
-        return RT_ERR_INPUT;
-
-    bitsShift = 0;
-    while(!(bitsMask & (1 << bitsShift)))
-    {
-        bitsShift++;
-        if(bitsShift >= RTL8373_REGBITLENGTH)
-            return RT_ERR_INPUT;
-    }
-
-    retVal = Access_Read(reg, 4, &regData);
-    if(TRUE != retVal)
+    if (ret)
         return RT_ERR_SMI;
 
-    *pValue = (regData & bitsMask) >> bitsShift;
-
-    if(0x8367B == cleDebuggingDisplay)
-        PRINT("R[0x%4.4x]=0x%4.4x\n", reg, regData);
-
-#elif defined(CONFIG_RTL8373_ASICDRV_TEST)
-    rtk_uint32 bitsShift;
-
-    if( !bitsMask )
-        return RT_ERR_INPUT;
-
-    bitsShift = 0;
-    while(!(bitsMask & (1 << bitsShift)))
-    {
-        bitsShift++;
-        if(bitsShift >= RTL8373_REGBITLENGTH)
-            return RT_ERR_INPUT;
-    }
-
-    if(reg >= CLE_VIRTUAL_REG_SIZE)
-        return RT_ERR_OUT_OF_RANGE;
-
-     *pValue = (CleVirtualReg[reg] & bitsMask) >> bitsShift;
-
-    if(0x8367B == cleDebuggingDisplay)
-        PRINT("R[0x%4.4x]=0x%4.4x\n", reg, CleVirtualReg[reg]);
-
-#elif defined(EMBEDDED_SUPPORT)
-    rtk_uint32 regData;
-    rtk_uint32 bitsShift;
-
-    if(reg > RTL8373_REGDATAMAX )
-        return RT_ERR_INPUT;
-
-    if(bitsMask >= (1UL << RTL8373_REGBITLENGTH) )
-        return RT_ERR_INPUT;
-
-    bitsShift = 0;
-    while(!(bitsMask & (1UL << bitsShift)))
-    {
-        bitsShift++;
-        if(bitsShift >= RTL8373_REGBITLENGTH)
-            return RT_ERR_INPUT;
-    }
-
-    regData = getReg(reg);
-    *value = (regData & bitsMask) >> bitsShift;
-
-#else
-    rtk_uint32 regData;
-    ret_t retVal;
-    rtk_uint32 bitsShift;
-
-    if( !bitsMask )
-        return RT_ERR_INPUT;
-
-    bitsShift = 0;
-    while(!(bitsMask & (1 << bitsShift)))
-    {
-        bitsShift++;
-        if(bitsShift >= RTL8373_REGBITLENGTH)
-            return RT_ERR_INPUT;
-    }
-
-    retVal = rtl8373_smi_read(reg, &regData);
-    if(retVal != RT_ERR_OK) return RT_ERR_SMI;
-
-    *pValue = (regData & bitsMask) >> bitsShift;
-  #ifdef CONFIG_RTL865X_CLE
-    if(0x8367B == cleDebuggingDisplay)
-        PRINT("R[0x%4.4x]=0x%4.4x\n",reg, regData);
-  #endif
-
-#endif
-
-    //PRINT("R[0x%4.4x]=0x%4.4x\n",reg, regData);
+    *pValue = (val & bitsMask) >> __ffs(bitsMask);
     return RT_ERR_OK;
 }
 /* Function Name:
@@ -532,56 +160,12 @@ ret_t rtl8373_getAsicRegBits(rtk_uint32 reg, rtk_uint32 bitsMask, rtk_uint32 *pV
  */
 ret_t rtl8373_setAsicReg(rtk_uint32 reg, rtk_uint32 value)
 {
-#if defined(RTK_X86_ASICDRV)/*RTK-CNSD2-NickWu-20061222: for x86 compile*/
+    int ret;
 
-    ret_t retVal;
+    ret = regmap_write(rtl_gbl_priv->map, reg, value);
 
-    retVal = Access_Write(reg,4,value);
-    if(TRUE != retVal) 
+    if (ret)
         return RT_ERR_SMI;
-
-    if(0x8367B == cleDebuggingDisplay)
-        PRINT("W[0x%8.8x]=0x%8.8x\n",reg,value);
-
-#elif defined(CONFIG_RTL8373_ASICDRV_TEST)
-    #if 0
-    /*MIBs emulating*/
-    if(reg == RTL8373_REG_MIB_ADDRESS)
-    {
-        CleVirtualReg[RTL8373_REG_MIB_COUNTER0] = 0x1;
-        CleVirtualReg[RTL8373_REG_MIB_COUNTER0+1] = 0x2;
-        CleVirtualReg[RTL8373_REG_MIB_COUNTER0+2] = 0x3;
-        CleVirtualReg[RTL8373_REG_MIB_COUNTER0+3] = 0x4;
-    }
-    #endif
-    if(reg >= CLE_VIRTUAL_REG_SIZE)
-        return RT_ERR_OUT_OF_RANGE;
-
-    CleVirtualReg[reg] = value;
-
-    if(0x8367B == cleDebuggingDisplay)
-        PRINT("W[0x%8.8x]=0x%8.8x\n",reg,CleVirtualReg[reg]);
-
-#elif defined(EMBEDDED_SUPPORT)
-    if(reg > RTL8373_REGDATAMAX || value > RTL8373_REGDATAMAX )
-        return RT_ERR_INPUT;
-
-    setReg(reg, value);
-
-#else
-    ret_t retVal;
-
-    retVal = rtl8373_smi_write(reg, value);
-    if(retVal != RT_ERR_OK)
-        return RT_ERR_SMI;
-  #ifdef CONFIG_RTL865X_CLE
-    if(0x8367B == cleDebuggingDisplay)
-        PRINT("W[0x%4.4x]=0x%4.4x\n",reg,value);
-  #endif
-
-#endif
-
-    //PRINT("W[0x%4.4x]=0x%4.4x\n",reg,value);
     return RT_ERR_OK;
 }
 /* Function Name:
@@ -601,54 +185,14 @@ ret_t rtl8373_setAsicReg(rtk_uint32 reg, rtk_uint32 value)
  */
 ret_t rtl8373_getAsicReg(rtk_uint32 reg, rtk_uint32 *pValue)
 {
+    int ret;
+    u32 val;
 
-#if defined(RTK_X86_ASICDRV)
+    ret = regmap_read(rtl_gbl_priv->map, reg, &val);
 
-    rtk_uint32 regData;
-    ret_t retVal;
-
-    retVal = Access_Read(reg, 4, &regData);
-    
-    if(TRUE != retVal)
+    if (ret)
         return RT_ERR_SMI;
 
-    *pValue = regData;
-
-    if(0x8367B == cleDebuggingDisplay)
-        PRINT("R[0x%4.4x]=0x%4.4x\n", reg, regData);
-
-#elif defined(CONFIG_RTL8373_ASICDRV_TEST)
-    if(reg >= CLE_VIRTUAL_REG_SIZE)
-        return RT_ERR_OUT_OF_RANGE;
-
-    *pValue = CleVirtualReg[reg];
-
-    if(0x8367B == cleDebuggingDisplay)
-        PRINT("R[0x%8.8x]=0x%8.8x\n", reg, CleVirtualReg[reg]);
-
-#elif defined(EMBEDDED_SUPPORT)
-    if(reg > RTL8373_REGDATAMAX  )
-        return RT_ERR_INPUT;
-
-    *value = getReg(reg);
-
-#else
-    rtk_uint32 regData;
-    ret_t retVal;
-
-    retVal = rtl8373_smi_read(reg, &regData);
-    if(retVal != RT_ERR_OK)
-        return RT_ERR_SMI;
-
-    *pValue = regData;
-  #ifdef CONFIG_RTL865X_CLE
-    if(0x8367B == cleDebuggingDisplay)
-        PRINT("R[0x%8.8x]=0x%8.8x\n", reg, regData);
-  #endif
-
-#endif
-
-    //PRINT("R[0x%8.8x]=0x%8.8x\n", reg, regData);
+    *pValue = val;
     return RT_ERR_OK;
 }
-
