@@ -20,7 +20,7 @@
 #include <rtk_switch.h>
 #include <rtk_error.h>
 #include <igmp.h>
-#include <string.h>
+#include <linux/string.h>
 
 #include <dal/dal_mgmt.h>
 #include <dal/rtl8373/dal_rtl8373_igmp.h>

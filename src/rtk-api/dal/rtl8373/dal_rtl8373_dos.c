@@ -21,7 +21,7 @@
 #include <rtk_error.h>
 #include <dal_rtl8373_dos.h>
 #include <rtl8373_asicdrv.h>
-#include <string.h>
+#include <linux/string.h>
 
 
 /* Function Name:

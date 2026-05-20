@@ -21,7 +21,7 @@
 #include <rtk_error.h>
 #include <svlan.h>
 #include <vlan.h>
-#include <string.h>
+#include <linux/string.h>
 
 #include <dal/dal_mgmt.h>
 

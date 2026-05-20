@@ -22,7 +22,7 @@
 #include <acl.h>
 #include <vlan.h>
 #include <svlan.h>
-#include <string.h>
+#include <linux/string.h>
 
 #include <dal/dal_mgmt.h>
 

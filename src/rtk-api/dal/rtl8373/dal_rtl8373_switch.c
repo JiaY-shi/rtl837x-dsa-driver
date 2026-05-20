@@ -23,7 +23,7 @@
 #include <dal/rtl8373/rtl8373_asicdrv.h>
 #include <dal_rtl8373_drv.h>
 #include <dal_rtl8373_port.h>
-#include <string.h>
+#include <linux/string.h>
 
 /*
  * Symbol Definition

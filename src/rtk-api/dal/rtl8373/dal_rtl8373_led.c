@@ -20,7 +20,7 @@
 #include <rtk_switch.h>
 #include <rtk_error.h>
 #include <dal_rtl8373_led.h>
-#include <string.h>
+#include <linux/string.h>
 #include <rtl8373_reg_definition.h>
 #include <rtl8373_asicdrv.h>
 

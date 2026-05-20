@@ -20,7 +20,7 @@
 #include <rtk_switch.h>
 #include <rtk_error.h>
 #include <dal/rtl8373/dal_rtl8373_cpuTag.h>
-#include <string.h>
+#include <linux/string.h>
 #include <dal/rtl8373/rtl8373_asicdrv.h>
 
 /* Function Name:

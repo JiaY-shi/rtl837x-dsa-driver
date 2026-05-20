@@ -3,7 +3,7 @@
 
 #include <dal_rtl8373_drv.h>
 //#include <stdlib.h>
-#include <string.h>
+#include <linux/string.h>
 #include <rtk_error.h>
 
 //#include "port.h"

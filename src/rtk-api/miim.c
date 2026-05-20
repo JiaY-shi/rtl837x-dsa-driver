@@ -23,7 +23,7 @@
 #include "ptp.h"
 #include "phydef.h"
 
-#include <string.h>
+#include <linux/string.h>
 /* Function Name:
  *      phy_ptpRefTime_set
  * Description:

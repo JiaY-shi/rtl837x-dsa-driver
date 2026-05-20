@@ -20,7 +20,7 @@
 #include <rtk_switch.h>
 #include <rtk_error.h>
 #include <dal/rtl8373/dal_rtl8373_igmp.h>
-#include <string.h>
+#include <linux/string.h>
 
 #include <rtl8373_asicdrv.h>
 #include <dal_rtl8373_lut.h>
@@ -1456,7 +1456,8 @@ rtk_api_ret_t dal_rtl8373_igmp_portRxPktEnable_get(rtk_port_t port, rtk_igmp_rxP
 
     retVal = rtl8373_getAsicRegBits(RTL8373_IGMP_PORT_CTRL_ADDR(rtk_switch_port_L2P_get(port)),RTL8373_IGMP_PORT_CTRL_ALLOW_QUERY_MASK, (rtk_uint32 *)&(pRxCfg->rxQuery));
         if(retVal != RT_ERR_OK)
-            return retVal;
+            return retVal;
+
     retVal = rtl8373_getAsicRegBits(RTL8373_IGMP_PORT_CTRL_ADDR(rtk_switch_port_L2P_get(port)),RTL8373_IGMP_PORT_CTRL_ALLOW_REPORT_MASK, (rtk_uint32 *)&(pRxCfg->rxReport));
         if(retVal != RT_ERR_OK)
             return retVal;

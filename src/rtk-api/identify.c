@@ -27,7 +27,7 @@
 #if defined(CONFIG_SDK_RTL8224)
 #include "phy_rtl8224.h"
 #endif
-#include <string.h>
+#include <linux/string.h>
 
 #if defined(CONFIG_SDK_RTL8224)
 static rt_phyInfo_t rtl8224_hal_Ctrl =

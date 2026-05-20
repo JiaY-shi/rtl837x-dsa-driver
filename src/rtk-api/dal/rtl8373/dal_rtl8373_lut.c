@@ -21,7 +21,7 @@
 #include <rtk_error.h>
 #include <dal_rtl8373_lut.h>
 #include <rtl8373_asicdrv.h>
-#include <string.h>
+#include <linux/string.h>
 #include "l2.h"
 
 static void _rtl8373_fdbStUser2Smi( rtl8373_luttb *pLutSt, rtk_uint32 *pFdbSmi)

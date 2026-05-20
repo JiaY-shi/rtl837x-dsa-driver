@@ -23,7 +23,7 @@
 #include <dal_rtl8373_switch.h>
 #include <dal_rtl8373_drv.h>
 #include <rtl8373_asicdrv.h>
-#include <string.h>
+#include <linux/string.h>
 
 rtk_uint32 PORT3_PHYAD=0;
 rtk_uint32 PORT8_PHYAD=0;
@@ -2360,7 +2360,7 @@ rtk_uint32 dump_EYE_DATA(rtk_uint32 sdsid, rtk_uint32 dbg_out, rtk_uint32 chip)
 /* Function Name:
  *      dal_rtl8373_iol_eye
  * Description:
- *      eye monitor , Õë¶Ô RTL8373/2 s0/1  ¼° RTL8373_ind_ac_RTL8224 s0.
+ *      eye monitor , ï¿½ï¿½ï¿½ RTL8373/2 s0/1  ï¿½ï¿½ RTL8373_ind_ac_RTL8224 s0.
  * Input:
  *      chip  - 8373/8373N/8372/8372N/8366U/8224 
  *      sdsid -0/1

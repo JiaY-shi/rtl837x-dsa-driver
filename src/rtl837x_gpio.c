@@ -1,3 +1,4 @@
+#include <linux/version.h>
 #include <linux/gpio/driver.h>
 
 #include "rtl837x_common.h"
@@ -20,7 +21,11 @@ static int rtl837x_gpio_request(struct gpio_chip *gc, unsigned int offset)
     return 0;
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,18,0)
+static int rtl837x_gpio_set(struct gpio_chip *gc, unsigned offset, int value)
+#else
 static void rtl837x_gpio_set(struct gpio_chip *gc, unsigned offset, int value)
+#endif
 {
     struct rtl837x_gpio *gpio = gpiochip_get_data(gc);
     rtk_gpio_level_t val = value == 1 ? GPIO_LEVEL_HIGH : GPIO_LEVEL_LOW;
@@ -28,7 +33,13 @@ static void rtl837x_gpio_set(struct gpio_chip *gc, unsigned offset, int value)
     if (ret)
     {
         dev_err(gpio->gsw->dev, "gpio %d: failed to write gpio val %x", offset, ret);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,18,0)
+        return -EIO;
+#endif
     }
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,18,0)
+    return 0;
+#endif
 }
 
 static int rtl837x_gpio_get(struct gpio_chip *gc, unsigned offset)

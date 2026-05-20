@@ -20,7 +20,7 @@
 #include <rtk_switch.h>
 #include <rtk_error.h>
 #include <dal_rtl8373_drv.h>
-#include <string.h>
+#include <linux/string.h>
 #include <rtl8373_asicdrv.h>
 #include <phy_rtl8224.h>
 /* Function Name:

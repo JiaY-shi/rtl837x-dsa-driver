@@ -22,7 +22,7 @@
 #include <dal/rtl8373/dal_rtl8373_dot1x.h>
 #include <dal/rtl8373/dal_rtl8373_vlan.h>
 #include <dal/rtl8373/dal_rtl8373_lut.h>
-#include <string.h>
+#include <linux/string.h>
 #include <rtl8373_asicdrv.h>
 //#include <rtl8373_asicdrv_rma.h>
 //#include <rtl8373_asicdrv_lut.h>

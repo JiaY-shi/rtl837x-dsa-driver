@@ -21,7 +21,7 @@
 #include <rtk_error.h>
 #include <dal/rtl8373/dal_rtl8373_vlan.h>
 #include <dal/rtl8373/rtl8373_asicdrv.h>
-#include <string.h>
+#include <linux/string.h>
 
 
 #if defined(CONFIG_RTL8373_ASICDRV_TEST)

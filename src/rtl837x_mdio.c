@@ -569,12 +569,18 @@ static void rtl837x_sfp_detach(void *upstream, struct sfp_bus *bus)
 static int rtl837x_sfp_module_insert(void *upstream, const struct sfp_eeprom_id *id)
 {
 	struct rtk_gsw *gsw = upstream;
-	__ETHTOOL_DECLARE_LINK_MODE_MASK(support) = { 0, };
-	DECLARE_PHY_INTERFACE_MASK(interfaces);
 	phy_interface_t iface;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,18,0)
+	const struct sfp_module_caps *caps;
+	caps = sfp_get_module_caps(gsw->sfp_bus);
+	iface = sfp_select_interface(gsw->sfp_bus, caps->link_modes);
+#else
+	__ETHTOOL_DECLARE_LINK_MODE_MASK(support) = { 0, };
+	DECLARE_PHY_INTERFACE_MASK(interfaces);
 	sfp_parse_support(gsw->sfp_bus, id, support, interfaces);
 	iface = sfp_select_interface(gsw->sfp_bus, support);
+#endif
 
 	dev_info(gsw->dev, "%s SFP module inserted\n", phy_modes(iface));
 

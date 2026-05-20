@@ -23,7 +23,7 @@
 #include <dal/rtl8373/dal_rtl8373_macsec_ip_reg.h>
 #include <dal/rtl8373/dal_rtl8373_drv.h>
 #include <rtl8373_asicdrv.h>
-#include <string.h>
+#include <linux/string.h>
 
 /* Function Name:
  *      dal_rtl8373_macsec_enable_set

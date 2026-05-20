@@ -21,7 +21,7 @@
 #include <rtk_error.h>
 #include <phy.h>
 #include <rtl8373_asicdrv.h>
-#include <string.h>
+#include <linux/string.h>
 #include <dal/dal_mgmt.h>
 #include <rtk_types.h>
 

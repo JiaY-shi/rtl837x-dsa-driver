@@ -20,7 +20,7 @@
 #include <rtk_switch.h>
 #include <rtk_error.h>
 #include <dal/rtl8373/dal_rtl8373_ptp.h>
-#include <string.h>
+#include <linux/string.h>
 #include <miim.h>
 #include <rtl8373_asicdrv.h>
 //#include <rtl8373_asicdrv_eav.h>

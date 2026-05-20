@@ -18,7 +18,7 @@
  */
 #include <rtk_switch.h>
 #include <rtk_error.h>
-#include <string.h>
+#include <linux/string.h>
 #include <identify.h>
 #include <dal/dal_mgmt.h>
 

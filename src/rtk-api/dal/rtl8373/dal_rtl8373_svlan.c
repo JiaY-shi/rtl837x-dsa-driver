@@ -23,7 +23,7 @@
 #include <dal/rtl8373/dal_rtl8373_vlan.h>
 #include <dal/rtl8373/dal_rtl8373_svlan.h>
 #include <dal/rtl8373/rtl8373_asicdrv.h>
-#include <string.h>
+#include <linux/string.h>
 
 
 /* Function Name:

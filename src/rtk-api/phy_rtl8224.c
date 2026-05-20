@@ -27,7 +27,7 @@
 #include <phy_rtl8224.h>
 #include <dal_rtl8373_ptp.h>
 #include <rtl8373_reg_definition.h>
-#include <string.h>
+#include <linux/string.h>
 /*
  * Data Declaration
  */

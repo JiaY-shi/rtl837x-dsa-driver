@@ -20,7 +20,7 @@
 
 #include <svlan.h>
 #include <dal/rtl8373/rtl8373_asicdrv.h>
-#include <string.h>
+#include <linux/string.h>
 
 
 /* Function Name:
