@@ -7,6 +7,7 @@
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/version.h>
+#include <linux/bits.h>
 #include <linux/device.h>
 #include <linux/delay.h>
 #include <linux/of_mdio.h>
@@ -250,12 +251,16 @@ static int rtl837x_switch_probe(struct rtk_gsw *gsw)
 		gsw->chip_name = chipid_to_chip_name(sw_chip);
 		gsw->num_ports = 6;
 		gsw->port_map = rtl8372_port_map;
+		gsw->valid_port_mask = GENMASK(8, 3);
+		gsw->dsa_num_ports = 9;
 		goto END_DETECT_CHIP;
 	case CHIP_RTL8373:
 	case CHIP_RTL8373N:
 		gsw->chip_name = chipid_to_chip_name(sw_chip);
 		gsw->num_ports = 9;
 		gsw->port_map = rtl8373_port_map;
+		gsw->valid_port_mask = GENMASK(8, 0);
+		gsw->dsa_num_ports = 9;
 		goto END_DETECT_CHIP;
 	default:
 		goto CHIP_NOT_SUPPORTED;
@@ -271,6 +276,23 @@ CHIP_NOT_SUPPORTED:
 END_DETECT_CHIP:
 	gsw->pMapper = dal_rtl8373_mapper_get();
 	gsw->chip_id = sw_chip;
+
+	if (!gsw->cpu_port_from_dsa) {
+		if (gsw->legacy_cpu_port >= gsw->num_ports) {
+			dev_err(gsw->dev, "legacy CPU port %u is out of logical range\n",
+				gsw->legacy_cpu_port);
+			return RT_ERR_INPUT;
+		}
+
+		gsw->cpu_port = PORT_MAPPED(gsw->legacy_cpu_port);
+	}
+
+	if (!(gsw->valid_port_mask & BIT(gsw->cpu_port))) {
+		dev_err(gsw->dev, "CPU port %u is not valid for %s\n",
+			gsw->cpu_port, gsw->chip_name);
+		return RT_ERR_PORT_ID;
+	}
+
 	dev_info(gsw->dev, "Found Realtek RTL chip %s\n", gsw->chip_name);
 	return RT_ERR_OK;
 }
@@ -487,7 +509,7 @@ int rtl8372n_hw_init(struct rtk_gsw *gsw, rtl837x_pnswap_cfg_t swap_cfg)
 	ret = rtk_sdsMode_set(1, gsw->sds1mode);
 	if (ret) return -EPERM;
 
-	ret = rtk_cpu_externalCpuPort_set(PORT_MAPPED(gsw->cpu_port));
+	ret = rtk_cpu_externalCpuPort_set(gsw->cpu_port);
 	if (ret)
 	{
 		dev_err(gsw->dev, "rtk_cpu_externalCpuPort_set failed, error:%d\n",ret);
@@ -520,10 +542,10 @@ static void rtl837x_status_check_work_func(struct work_struct *work)
 	if (!gsw->ethernet_master)
 		return;
 
-	rtk_port_macStatus_get(PORT_MAPPED(gsw->cpu_port), &port_status);
+	rtk_port_macStatus_get(gsw->cpu_port, &port_status);
 	if (!port_status.link)
 	{
-		if (PORT_MAPPED(gsw->cpu_port) != UTP_PORT3 && PORT_MAPPED(gsw->cpu_port) != UTP_PORT8)
+		if (gsw->cpu_port != UTP_PORT3 && gsw->cpu_port != UTP_PORT8)
 		{
 			dev_warn(gsw->dev, "CPU Port Down, But the CPU port is not Serdes Port, Skip Reset and stop CPU port check work\n");
 			return;
@@ -660,6 +682,45 @@ static int rtl837x_status_check_work_init(struct rtk_gsw *gsw)
 	return 0;
 }
 
+static int rtl837x_of_get_dsa_cpu_port(struct device_node *np, u32 *port,
+				       struct device_node **ethernet)
+{
+	struct device_node *ports, *child;
+	int ret;
+
+	*ethernet = NULL;
+
+	ports = of_get_child_by_name(np, "ports");
+	if (!ports)
+		ports = of_get_child_by_name(np, "ethernet-ports");
+	if (!ports)
+		return -ENOENT;
+
+	for_each_available_child_of_node(ports, child) {
+		struct device_node *eth;
+
+		eth = of_parse_phandle(child, "ethernet", 0);
+		if (!eth)
+			continue;
+
+		ret = of_property_read_u32(child, "reg", port);
+		if (ret) {
+			of_node_put(eth);
+			of_node_put(child);
+			of_node_put(ports);
+			return ret;
+		}
+
+		*ethernet = eth;
+		of_node_put(child);
+		of_node_put(ports);
+		return 0;
+	}
+
+	of_node_put(ports);
+	return -ENOENT;
+}
+
 // below are platform driver
 static const struct of_device_id rtk_gsw_match[] = {
 	{ .compatible = "realtek,rtl837x" },
@@ -668,7 +729,7 @@ static const struct of_device_id rtk_gsw_match[] = {
 
 MODULE_DEVICE_TABLE(of, rtk_gsw_match);
 
-static int rtl837x_gsw_probe(struct mdio_device *mdiodev)
+static int rtl837x_dsa_probe(struct mdio_device *mdiodev)
 {
 	struct device *dev =&mdiodev->dev;
 	struct device_node *np = dev->of_node;
@@ -678,11 +739,30 @@ static int rtl837x_gsw_probe(struct mdio_device *mdiodev)
 	const char *sdsmode_name;
 	rtk_sds_mode_t sdsmode;
 	struct regmap_config rc;
+	u32 cpu_port;
+	bool cpu_port_from_dsa = false;
 	
 	int ret;
-	dev_info(dev,"start rtl837x_gsw_probe");
+	dev_info(dev, "start rtl837x_dsa_probe");
 
-	ethernet = of_parse_phandle(np, "ethernet", 0);
+	ret = rtl837x_of_get_dsa_cpu_port(np, &cpu_port, &ethernet);
+	if (ret == -ENOENT) {
+		ethernet = of_parse_phandle(np, "ethernet", 0);
+
+		ret = of_property_read_u32(np, "rtl837x,cpu-port", &cpu_port);
+		if (ret) {
+			dev_err(dev, "failed to get DSA CPU port or legacy rtl837x,cpu-port\n");
+			if (ethernet)
+				of_node_put(ethernet);
+			return -EINVAL;
+		}
+	} else if (ret) {
+		dev_err(dev, "failed to parse DSA CPU port: %d\n", ret);
+		return ret;
+	} else {
+		cpu_port_from_dsa = true;
+	}
+
 	if (ethernet)
 	{
 		master = of_find_net_device_by_node(ethernet);
@@ -696,8 +776,11 @@ static int rtl837x_gsw_probe(struct mdio_device *mdiodev)
 	}
 
 	gsw = devm_kzalloc(dev, sizeof(struct rtk_gsw), GFP_KERNEL);
-	if (!gsw)
+	if (!gsw) {
+		if (master)
+			dev_put(master);
 		return -ENOMEM;	
+	}
 
 	mutex_init(&gsw->map_lock);
 	
@@ -707,6 +790,8 @@ static int rtl837x_gsw_probe(struct mdio_device *mdiodev)
 	if (IS_ERR(gsw->map)) {
 		ret = PTR_ERR(gsw->map);
 		dev_err(dev, "regmap init failed: %d\n", ret);
+		if (master)
+			dev_put(master);
 		return -EINVAL;
 	}
 
@@ -715,6 +800,8 @@ static int rtl837x_gsw_probe(struct mdio_device *mdiodev)
 	if (IS_ERR(gsw->map_nolock)) {
 		ret = PTR_ERR(gsw->map_nolock);
 		dev_err(dev, "regmap init failed: %d\n", ret);
+		if (master)
+			dev_put(master);
 		return -EINVAL;
 	}
 
@@ -723,16 +810,13 @@ static int rtl837x_gsw_probe(struct mdio_device *mdiodev)
 	gsw->ethernet_master = master;
 	gsw->sds0mode = SERDES_OFF;
 	gsw->sds1mode = SERDES_OFF;
+	gsw->cpu_port = cpu_port;
+	gsw->legacy_cpu_port = cpu_port;
+	gsw->cpu_port_from_dsa = cpu_port_from_dsa;
 
 	gsw->reset_pin = devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_LOW);
 	if (IS_ERR(gsw->reset_pin)) {
 		dev_warn(dev, "failed to get RESET GPIO!!!\n");
-	}
-
-	if (of_property_read_u32(np, "rtl837x,cpu-port", &gsw->cpu_port)) {
-		dev_err(gsw->dev, "failed to get cpu port\n");
-		devm_kfree(dev, gsw);
-		return ret;
 	}
 
 	if (!of_property_read_string(np, "rtl837x,sds0mode", &sdsmode_name) &&
@@ -762,7 +846,7 @@ static int rtl837x_gsw_probe(struct mdio_device *mdiodev)
 	gsw->mib_counters = rtl837x_mib_counters;
 	gsw->num_mib_counters = ARRAY_SIZE(rtl837x_mib_counters);
 
-	dev_info(gsw->dev, "rtl837x dev info:smi-addr:%d cpu_port:%d serdes-mode:%d swap_cfg:0x%x\n",
+	dev_info(gsw->dev, "rtl837x dev info:smi-addr:%d configured-cpu-port:%u serdes-mode:%d swap_cfg:0x%x\n",
 						 gsw->mdio_addr, gsw->cpu_port, gsw->sds0mode, *(uint8_t*)&(gsw->swap_cfg));
 
 	dev_set_drvdata(dev, gsw);
@@ -772,13 +856,20 @@ static int rtl837x_gsw_probe(struct mdio_device *mdiodev)
 	if (ret)
 	{
 		dev_err(gsw->dev, "rtl8372n_hw_init failed, ret=%d\n",ret);
+		if (master)
+			dev_put(master);
 		devm_kfree(dev, gsw);
 		return -ENODEV;
 	}
 
-	ret = rtl837x_swconfig_init(gsw);
+	dev_info(gsw->dev, "rtl837x DSA cpu-port:%u valid-port-mask:0x%x\n",
+		 gsw->cpu_port, gsw->valid_port_mask);
+
+	ret = rtl837x_dsa_register(gsw);
 	if (ret){
-		dev_err(gsw->dev, "rtl837x_swconfig_init failed, ret=%d\n", ret);
+		dev_err(gsw->dev, "rtl837x_dsa_register failed, ret=%d\n", ret);
+		if (master)
+			dev_put(master);
 		devm_kfree(dev, gsw);
 		return ret;
 	}
@@ -795,39 +886,52 @@ static int rtl837x_gsw_probe(struct mdio_device *mdiodev)
 	return 0;
 }
 
-static void rtl837x_gsw_remove(struct mdio_device *mdiodev)
+static void rtl837x_dsa_remove(struct mdio_device *mdiodev)
 {
 	struct rtk_gsw *gsw = dev_get_drvdata(&mdiodev->dev);;
+
+	if (!gsw)
+		return;
+
 	cancel_delayed_work_sync(&gsw->status_check_work);
 	if (gsw->sfp_bus)
 		sfp_bus_del_upstream(gsw->sfp_bus);
 
-	unregister_switch(&gsw->sw_dev);
+	rtl837x_dsa_unregister(gsw);
 	rtl837x_debug_proc_deinit(gsw);
+	if (gsw->ethernet_master) {
+		dev_put(gsw->ethernet_master);
+		gsw->ethernet_master = NULL;
+	}
 }
 
-static void rtl837x_gsw_shutdown(struct mdio_device *mdiodev)
+static void rtl837x_mdio_shutdown(struct mdio_device *mdiodev)
 {
 	struct rtk_gsw *gsw = dev_get_drvdata(&mdiodev->dev);
 
 	if (!gsw)
 		return;
 
+	rtl837x_dsa_shutdown(gsw);
+	if (gsw->ethernet_master) {
+		dev_put(gsw->ethernet_master);
+		gsw->ethernet_master = NULL;
+	}
+
 	dev_set_drvdata(&mdiodev->dev, NULL);
 }
 
 static struct mdio_driver rtl837x_mdio_driver = {
 	.mdiodrv.driver = {
-		.name = "rtl837x-gsw",
+		.name = "rtl837x-dsa",
 		.of_match_table = rtk_gsw_match,
 	},
-	.probe  = rtl837x_gsw_probe,
-	.remove = rtl837x_gsw_remove,
-	.shutdown = rtl837x_gsw_shutdown,
+	.probe  = rtl837x_dsa_probe,
+	.remove = rtl837x_dsa_remove,
+	.shutdown = rtl837x_mdio_shutdown,
 };
 mdio_module_driver(rtl837x_mdio_driver);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("StarField Xu <air_jinkela@163.com>");
-MODULE_DESCRIPTION("rtl8372n switch driver for MT7988");
-MODULE_ALIAS("platform:rtl837x-gpio");
+MODULE_DESCRIPTION("RTL837x DSA switch driver");

@@ -6,11 +6,11 @@
 #ifndef __RTL8372_COMMON_H__
 #define __RTL8372_COMMON_H__
 
-#include <linux/switch.h>
 #include <linux/of_mdio.h>
 #include <linux/regmap.h>
 #include <linux/workqueue.h>
 #include <linux/debugfs.h>
+#include <net/dsa.h>
 
 #include "./rtk-api/rtk_error.h"
 #include "./rtk-api/rtk_types.h"
@@ -92,8 +92,15 @@ struct rtk_gsw {
 	rtk_sds_mode_t sds1mode;
 	rtl837x_pnswap_cfg_t swap_cfg;
 
-	struct switch_dev sw_dev;
 	unsigned int cpu_port;
+	unsigned int legacy_cpu_port;
+	bool cpu_port_from_dsa;
+	u32 valid_port_mask;
+	unsigned int dsa_num_ports;
+	bool dsa_registered;
+	struct dsa_switch ds;
+	struct net_device *bridge_dev[RTK_MAX_NUM_OF_PORT];
+	bool port_enabled[RTK_MAX_NUM_OF_PORT];
 	struct net_device *ethernet_master;
 	struct sfp_bus *sfp_bus;
 
@@ -111,7 +118,7 @@ struct rtk_gsw {
 
 	char buf[4096];
 
-	uint16_t port_pvid[6];  // 端口PVID配置
+	uint16_t port_pvid[RTK_MAX_NUM_OF_PORT];  // 端口PVID配置
 
 	uint16_t flow_control_map; // 流控配置位图
 	bool global_vlan_enable;
@@ -125,7 +132,9 @@ extern int rtl8372n_hw_init(struct rtk_gsw *gsw, rtl837x_pnswap_cfg_t swap_cfg);
 extern int rtl837x_debug_proc_init(struct rtk_gsw *gsw);
 extern int rtl837x_debug_proc_deinit(struct rtk_gsw *gsw);
 
-extern int rtl837x_swconfig_init(struct rtk_gsw *gsw);
+extern int rtl837x_dsa_register(struct rtk_gsw *gsw);
+extern void rtl837x_dsa_unregister(struct rtk_gsw *gsw);
+extern void rtl837x_dsa_shutdown(struct rtk_gsw *gsw);
 extern int rtl837x_gpiochip_init(struct rtk_gsw *gsw);
 
 unsigned int mii_mgr_read(unsigned int phy_addr, 
